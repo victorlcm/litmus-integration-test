@@ -1,0 +1,544 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  creationTimestamp: null
+  labels:
+    cluster_id: a9e97b4f-8205-453b-8f7e-056b13464af5
+    subject: sock-shop_litmus
+    workflow_id: 11c7454d-e1dc-4eac-b071-903fc6e99915
+    workflows.argoproj.io/controller-instanceid: a9e97b4f-8205-453b-8f7e-056b13464af5
+  name: sock-shop-1642168557
+  namespace: litmus
+spec:
+  arguments:
+    parameters:
+    - name: adminModeNamespace
+      value: litmus
+    - name: appNamespace
+      value: sock-shop
+  entrypoint: argowf-chaos
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  serviceAccountName: argo-chaos
+  templates:
+  - inputs: {}
+    metadata: {}
+    name: argowf-chaos
+    outputs: {}
+    steps:
+    - - arguments: {}
+        name: install-application
+        template: install-application
+    - - arguments: {}
+        name: install-chaos-experiments
+        template: install-chaos-experiments
+      - arguments: {}
+        name: load-test
+        template: load-test
+    - - arguments: {}
+        name: pod-cpu-hog
+        template: pod-cpu-hog
+    - - arguments: {}
+        name: pod-delete
+        template: pod-delete
+    - - arguments: {}
+        name: pod-network-loss
+        template: pod-network-loss
+    - - arguments: {}
+        name: pod-memory-hog
+        template: pod-memory-hog
+    - - arguments: {}
+        name: disk-fill
+        template: disk-fill
+    - - arguments: {}
+        name: revert-chaos
+        template: revert-chaos
+      - arguments: {}
+        name: delete-loadtest
+        template: delete-loadtest
+  - container:
+      args:
+      - -namespace=sock-shop
+      - -typeName=resilient
+      - -operation=apply
+      - -timeout=400
+      - -app=sock-shop
+      - -scope=cluster
+      image: litmuschaos/litmus-app-deployer:latest
+      name: ""
+      resources: {}
+    inputs: {}
+    metadata: {}
+    name: install-application
+    outputs: {}
+  - container:
+      args:
+      - kubectl apply -f https://hub.litmuschaos.io/api/chaos/2.3.0?file=charts/generic/experiments.yaml
+        -n {{workflow.parameters.adminModeNamespace}} ; sleep 30
+      command:
+      - sh
+      - -c
+      image: litmuschaos/k8s:latest
+      name: ""
+      resources: {}
+    inputs: {}
+    metadata: {}
+    name: install-chaos-experiments
+    outputs: {}
+  - container:
+      args:
+      - -file=/tmp/chaosengine.yaml
+      - -saveName=/tmp/engine-name
+      image: litmuschaos/litmus-checker:latest
+      name: ""
+      resources: {}
+    inputs:
+      artifacts:
+      - name: pod-cpu-hog
+        path: /tmp/chaosengine.yaml
+        raw:
+          data: |
+            apiVersion: litmuschaos.io/v1alpha1
+            kind: ChaosEngine
+            metadata:
+              namespace: "{{workflow.parameters.adminModeNamespace}}"
+              labels:
+                instance_id: 440ac976-198b-4de9-a4e1-ae05f7244164
+                workflow_name: sock-shop-1642168557
+              generateName: pod-cpu-hog-chaos
+            spec:
+              appinfo:
+                appns: sock-shop
+                applabel: name=carts
+                appkind: deployment
+              jobCleanUpPolicy: retain
+              engineState: active
+              chaosServiceAccount: litmus-admin
+              experiments:
+                - name: pod-cpu-hog
+                  spec:
+                    probe:
+                      - name: check-frontend-access-url
+                        type: httpProbe
+                        httpProbe/inputs:
+                          url: http://front-end.sock-shop.svc.cluster.local:80
+                          insecureSkipVerify: false
+                          responseTimeout: 100
+                          method:
+                            get:
+                              criteria: ==
+                              responseCode: "200"
+                        mode: Continuous
+                        runProperties:
+                          probeTimeout: 2
+                          interval: 1
+                          retry: 2
+                          probePollingInterval: 1
+                      - name: check-benchmark
+                        type: cmdProbe
+                        cmdProbe/inputs:
+                          command: curl http://qps-test.sock-shop.svc.cluster.local
+                          comparator:
+                            type: int
+                            criteria: ">="
+                            value: "100"
+                        mode: Edge
+                        runProperties:
+                          probeTimeout: 2
+                          interval: 1
+                          retry: 2
+                          initialDelaySeconds: 10
+                    components:
+                      env:
+                        - name: CPU_CORES
+                          value: "1"
+                        - name: TOTAL_CHAOS_DURATION
+                          value: "30"
+                        - name: CHAOS_KILL_COMMAND
+                          value: >-
+                            kill -9 $(ps afx | grep "[md5sum] /dev/zero" | awk '{print$1}' |
+                            tr '
+
+                            ' ' ')
+    metadata:
+      labels:
+        weight: "10"
+    name: pod-cpu-hog
+    outputs: {}
+  - container:
+      args:
+      - -file=/tmp/chaosengine.yaml
+      - -saveName=/tmp/engine-name
+      image: litmuschaos/litmus-checker:latest
+      name: ""
+      resources: {}
+    inputs:
+      artifacts:
+      - name: pod-memory-hog
+        path: /tmp/chaosengine.yaml
+        raw:
+          data: |
+            apiVersion: litmuschaos.io/v1alpha1
+            kind: ChaosEngine
+            metadata:
+              namespace: "{{workflow.parameters.adminModeNamespace}}"
+              labels:
+                instance_id: 7acefc91-47ad-4541-a041-44dfce85192e
+                workflow_name: sock-shop-1642168557
+              generateName: pod-memory-hog-chaos
+            spec:
+              appinfo:
+                appns: sock-shop
+                applabel: name=orders
+                appkind: deployment
+              jobCleanUpPolicy: retain
+              engineState: active
+              chaosServiceAccount: litmus-admin
+              experiments:
+                - name: pod-memory-hog
+                  spec:
+                    probe:
+                      - name: check-frontend-access-url
+                        type: httpProbe
+                        httpProbe/inputs:
+                          url: http://front-end.sock-shop.svc.cluster.local:80
+                          insecureSkipVerify: false
+                          responseTimeout: 100
+                          method:
+                            get:
+                              criteria: ==
+                              responseCode: "200"
+                        mode: Continuous
+                        runProperties:
+                          probeTimeout: 2
+                          interval: 1
+                          retry: 2
+                          probePollingInterval: 1
+                      - name: check-benchmark
+                        type: cmdProbe
+                        cmdProbe/inputs:
+                          command: curl http://qps-test.sock-shop.svc.cluster.local
+                          comparator:
+                            type: int
+                            criteria: ">="
+                            value: "100"
+                        mode: Edge
+                        runProperties:
+                          probeTimeout: 2
+                          interval: 1
+                          retry: 2
+                          initialDelaySeconds: 10
+                    components:
+                      env:
+                        - name: MEMORY_CONSUMPTION
+                          value: "500"
+                        - name: TOTAL_CHAOS_DURATION
+                          value: "30"
+                        - name: CHAOS_KILL_COMMAND
+                          value: >-
+                            kill -9 $(ps afx | grep "[dd] if /dev/zero" | awk '{print $1}' |
+                            tr '
+
+                            ' ' ')
+    metadata:
+      labels:
+        weight: "10"
+    name: pod-memory-hog
+    outputs: {}
+  - container:
+      args:
+      - -file=/tmp/chaosengine.yaml
+      - -saveName=/tmp/engine-name
+      image: litmuschaos/litmus-checker:latest
+      name: ""
+      resources: {}
+    inputs:
+      artifacts:
+      - name: pod-delete
+        path: /tmp/chaosengine.yaml
+        raw:
+          data: |
+            apiVersion: litmuschaos.io/v1alpha1
+            kind: ChaosEngine
+            metadata:
+              namespace: "{{workflow.parameters.adminModeNamespace}}"
+              labels:
+                instance_id: c4ef165c-cb93-4260-8898-64841ef11ca5
+                workflow_name: sock-shop-1642168557
+              generateName: catalogue-pod-delete-chaos
+            spec:
+              appinfo:
+                appns: sock-shop
+                applabel: name=catalogue
+                appkind: deployment
+              engineState: active
+              chaosServiceAccount: litmus-admin
+              jobCleanUpPolicy: retain
+              components:
+                runner:
+                  imagePullPolicy: Always
+              experiments:
+                - name: pod-delete
+                  spec:
+                    probe:
+                      - name: check-catalogue-access-url
+                        type: httpProbe
+                        httpProbe/inputs:
+                          url: http://front-end.sock-shop.svc.cluster.local:80/catalogue
+                          insecureSkipVerify: false
+                          responseTimeout: 100
+                          method:
+                            get:
+                              criteria: ==
+                              responseCode: "200"
+                        mode: Continuous
+                        runProperties:
+                          probeTimeout: 12
+                          interval: 12
+                          retry: 3
+                          probePollingInterval: 1
+                      - name: check-benchmark
+                        type: cmdProbe
+                        cmdProbe/inputs:
+                          command: curl http://qps-test.sock-shop.svc.cluster.local
+                          comparator:
+                            type: int
+                            criteria: ">="
+                            value: "100"
+                        mode: Edge
+                        runProperties:
+                          probeTimeout: 2
+                          interval: 1
+                          retry: 2
+                          initialDelaySeconds: 2
+                    components:
+                      env:
+                        - name: TOTAL_CHAOS_DURATION
+                          value: "30"
+                        - name: CHAOS_INTERVAL
+                          value: "10"
+                        - name: FORCE
+                          value: "false"
+    metadata:
+      labels:
+        weight: "10"
+    name: pod-delete
+    outputs: {}
+  - container:
+      args:
+      - -file=/tmp/chaosengine.yaml
+      - -saveName=/tmp/engine-name
+      image: litmuschaos/litmus-checker:latest
+      name: ""
+      resources: {}
+    inputs:
+      artifacts:
+      - name: pod-network-loss
+        path: /tmp/chaosengine.yaml
+        raw:
+          data: |
+            apiVersion: litmuschaos.io/v1alpha1
+            kind: ChaosEngine
+            metadata:
+              namespace: "{{workflow.parameters.adminModeNamespace}}"
+              labels:
+                instance_id: fa666f21-7dd6-4720-bfca-27a851c43fe3
+                workflow_name: sock-shop-1642168557
+              generateName: pod-network-loss-chaos
+            spec:
+              appinfo:
+                appns: sock-shop
+                applabel: name=user-db
+                appkind: statefulset
+              jobCleanUpPolicy: retain
+              engineState: active
+              chaosServiceAccount: litmus-admin
+              components:
+                runner:
+                  imagePullPolicy: Always
+              experiments:
+                - name: pod-network-loss
+                  spec:
+                    probe:
+                      - name: check-cards-access-url
+                        type: httpProbe
+                        httpProbe/inputs:
+                          url: http://front-end.sock-shop.svc.cluster.local:80/cards
+                          insecureSkipVerify: false
+                          responseTimeout: 100
+                          method:
+                            get:
+                              criteria: ==
+                              responseCode: "200"
+                        mode: Continuous
+                        runProperties:
+                          probeTimeout: 12
+                          interval: 12
+                          retry: 3
+                          probePollingInterval: 1
+                      - name: check-benchmark
+                        type: cmdProbe
+                        cmdProbe/inputs:
+                          command: curl http://qps-test.sock-shop.svc.cluster.local
+                          comparator:
+                            type: int
+                            criteria: ">="
+                            value: "100"
+                        mode: Edge
+                        runProperties:
+                          probeTimeout: 2
+                          interval: 1
+                          retry: 2
+                          initialDelaySeconds: 2
+                    components:
+                      env:
+                        - name: TOTAL_CHAOS_DURATION
+                          value: "30"
+                        - name: NETWORK_INTERFACE
+                          value: eth0
+                        - name: NETWORK_PACKET_LOSS_PERCENTAGE
+                          value: "100"
+                        - name: CONTAINER_RUNTIME
+                          value: docker
+                        - name: SOCKET_PATH
+                          value: /var/run/docker.sock
+    metadata:
+      labels:
+        weight: "10"
+    name: pod-network-loss
+    outputs: {}
+  - container:
+      args:
+      - -file=/tmp/chaosengine.yaml
+      - -saveName=/tmp/engine-name
+      image: litmuschaos/litmus-checker:latest
+      name: ""
+      resources: {}
+    inputs:
+      artifacts:
+      - name: disk-fill
+        path: /tmp/chaosengine.yaml
+        raw:
+          data: |
+            apiVersion: litmuschaos.io/v1alpha1
+            kind: ChaosEngine
+            metadata:
+              namespace: "{{workflow.parameters.adminModeNamespace}}"
+              labels:
+                instance_id: 601fa3ed-b343-4790-9a69-21fedb95aa23
+                workflow_name: sock-shop-1642168557
+              generateName: catalogue-disk-fill
+            spec:
+              appinfo:
+                appns: sock-shop
+                applabel: name=catalogue-db
+                appkind: statefulset
+              engineState: active
+              chaosServiceAccount: litmus-admin
+              jobCleanUpPolicy: retain
+              components:
+                runner:
+                  imagePullPolicy: Always
+              experiments:
+                - name: disk-fill
+                  spec:
+                    probe:
+                      - name: check-catalogue-db-cr-status
+                        type: k8sProbe
+                        k8sProbe/inputs:
+                          group: ""
+                          version: v1
+                          resource: pods
+                          namespace: sock-shop
+                          fieldSelector: status.phase=Running
+                          labelSelector: name=catalogue-db
+                          operation: present
+                        mode: Continuous
+                        runProperties:
+                          probeTimeout: 1
+                          interval: 1
+                          retry: 1
+                          probePollingInterval: 1
+                      - name: check-benchmark
+                        type: cmdProbe
+                        cmdProbe/inputs:
+                          command: curl http://qps-test.sock-shop.svc.cluster.local:80
+                          comparator:
+                            type: int
+                            criteria: ">="
+                            value: "100"
+                        mode: Edge
+                        runProperties:
+                          probeTimeout: 2
+                          interval: 1
+                          retry: 2
+                          initialDelaySeconds: 1
+                    components:
+                      env:
+                        - name: FILL_PERCENTAGE
+                          value: "100"
+                        - name: TARGET_CONTAINER
+                          value: ""
+                        - name: TOTAL_CHAOS_DURATION
+                          value: "30"
+    metadata:
+      labels:
+        weight: "10"
+    name: disk-fill
+    outputs: {}
+  - container:
+      args:
+      - -namespace=sock-shop
+      - -typeName=resilient
+      - -operation=delete
+      - -app=sock-shop
+      image: litmuschaos/litmus-app-deployer:latest
+      name: ""
+      resources: {}
+    inputs: {}
+    metadata: {}
+    name: delete-application
+    outputs: {}
+  - container:
+      args:
+      - -namespace=loadtest
+      - -app=loadtest
+      image: litmuschaos/litmus-app-deployer:latest
+      name: ""
+      resources: {}
+    inputs: {}
+    metadata: {}
+    name: load-test
+    outputs: {}
+  - container:
+      args:
+      - -namespace=loadtest
+      - -operation=delete
+      - -app=loadtest
+      image: litmuschaos/litmus-app-deployer:latest
+      name: ""
+      resources: {}
+    inputs: {}
+    metadata: {}
+    name: delete-loadtest
+    outputs: {}
+  - container:
+      args:
+      - 'kubectl delete chaosengine -l ''instance_id in (440ac976-198b-4de9-a4e1-ae05f7244164,
+        7acefc91-47ad-4541-a041-44dfce85192e, c4ef165c-cb93-4260-8898-64841ef11ca5,
+        fa666f21-7dd6-4720-bfca-27a851c43fe3, 601fa3ed-b343-4790-9a69-21fedb95aa23,
+        )'' -n {{workflow.parameters.adminModeNamespace}} '
+      command:
+      - sh
+      - -c
+      image: litmuschaos/k8s:latest
+      name: ""
+      resources: {}
+    inputs: {}
+    metadata: {}
+    name: revert-chaos
+    outputs: {}
+status:
+  finishedAt: null
+  startedAt: null
